@@ -11,7 +11,7 @@ spring:
     time-zone: GMT+8
     date-format: yyyy-MM-dd HH:mm:ss
   redis:
-    host: localhost
+    host: 117.72.66.10
     port: 6379
     password:       # 密码（默认为空）
   servlet:
