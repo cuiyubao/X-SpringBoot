@@ -58,6 +58,7 @@ public class SecurityConfigurer {
         permitAll.add("/v3/**");
         permitAll.add("/swagger-ui/**");
         permitAll.add("/swagger-resources/**");
+        permitAll.add("/api/**");
         permitAll.add(Constant.TOKEN_ENTRY_POINT_URL);
         permitAll.add(Constant.TOKEN_LOGOUT_URL);
         String[] urls = permitAll.stream().distinct().toArray(String[]::new);
