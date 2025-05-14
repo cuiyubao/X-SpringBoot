@@ -4,13 +4,13 @@ package com.suke.czx.modules.apk.service;
 import com.itextpdf.io.font.PdfEncodings;
 import com.itextpdf.kernel.font.PdfFont;
 import com.itextpdf.kernel.font.PdfFontFactory;
+import com.itextpdf.kernel.geom.PageSize;
 import com.itextpdf.kernel.geom.Rectangle;
-import com.itextpdf.kernel.pdf.PdfDocument;
-import com.itextpdf.kernel.pdf.PdfPage;
-import com.itextpdf.kernel.pdf.PdfReader;
-import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.kernel.pdf.*;
 import com.itextpdf.kernel.pdf.canvas.PdfCanvas;
 import com.itextpdf.kernel.utils.PdfMerger;
+import com.suke.czx.common.base.AddFooterTextInfo;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -24,10 +24,22 @@ import org.springframework.stereotype.Service;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
+import com.itextpdf.io.image.ImageData;
+import com.itextpdf.io.image.ImageDataFactory;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.layout.Document;
+import com.itextpdf.layout.element.Image;
+import org.springframework.util.CollectionUtils;
 
 /**
  * @author cuiyubao
@@ -36,6 +48,9 @@ import java.util.List;
 @Service
 @Slf4j
 public class TestService {
+
+
+     List<String> imageList = Arrays.asList("https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117262798(0).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117263709(1).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117264193(2).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117264473(3).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117264971(4).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117265241(5).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117265504(6).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117265809(7).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117266170(8).jpg","https://storage.lianjia.com/nrs-sales-project-public/25b9dcc9364176070653e34a9b9659ec1735117266447(9).jpg");
 
 
     public void dealPdf(){
@@ -295,9 +310,10 @@ public class TestService {
     }
 
     public void sortPdf(){
-        String url="/Users/cuiyubao/merge.pdf";
+        String url="/Users/cuiyubao/Desktop/test/merge.pdf";
+        String out="/Users/cuiyubao/Desktop/test/merge_compress.pdf";
         try {
-            compressPDF(url,"/Users/cuiyubao/merge_sort_30.pdf",40);
+            compressPDF(url,out,80);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -348,6 +364,363 @@ public class TestService {
         ImageIO.write(image, "jpg", tempImageFile);
         return tempImageFile;
     }
+
+
+    public void mergeImage(){
+        String url="/Users/cuiyubao/merge.pdf";
+
+        try {
+            createPdfFromImages(url,imageList);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+
+
+    public static void createPdfFromImages1(String destPath, List<String> imageUrls) throws IOException {
+        // 创建 PDF 文档
+        PdfWriter writer = new PdfWriter(destPath);
+        PdfDocument pdf = new PdfDocument(writer);
+        Document document = new Document(pdf);
+
+        for (String imageUrl : imageUrls) {
+            try {
+                // 加载图片
+                ImageData imageData = ImageDataFactory.create(imageUrl);
+                Image image = new Image(imageData);
+
+                // 自动缩放图片以适应页面
+                image.setAutoScale(true);
+
+                // 添加图片到 PDF
+                document.add(image);
+            } catch (Exception e) {
+                System.err.println("加载图片失败: " + imageUrl + "，错误信息: " + e.getMessage());
+            }
+        }
+
+        // 关闭文档
+        document.close();
+    }
+
+
+
+    /**
+     * 将多张图片生成到 PDF，每张图片单独占一页
+     *
+     * @param destPath PDF 文件路径
+     * @param imageUrls 图片链接列表
+     * @throws IOException 如果读取图片或写入 PDF 文件失败
+     */
+    public static void createPdfFromImages(String destPath, List<String> imageUrls) throws IOException {
+        // 初始化 PDF 文档
+        PdfWriter writer = new PdfWriter(destPath);
+        PdfDocument pdf = new PdfDocument(writer);
+        Document document = new Document(pdf);
+
+        for (String imageUrl : imageUrls) {
+            try {
+                // 加载图片
+                ImageData imageData = ImageDataFactory.create(imageUrl);
+                Image image = new Image(imageData);
+                // 设置页面大小适配图片尺寸
+                PageSize pageSize = new PageSize(image.getImageScaledWidth(), image.getImageScaledHeight());
+                pdf.addNewPage(pageSize);
+                document.setMargins(0, 0, 0, 0);
+
+                // 添加图片到当前页面
+                document.add(image);
+            } catch (Exception e) {
+                System.err.println("加载图片失败: " + imageUrl + "，错误信息: " + e.getMessage());
+            }
+        }
+        // 关闭文档
+        document.close();
+    }
+
+
+    public static void main(String[] args) {
+//        String pdfUrl = "https://file.ljcdn.com/utopia-file/f1/eefe5c52eb439fb30dec61c33bfbf931a1cdbc87.pdf"; // 替换为你的 PDF 链接
+        String pdfUrl = "https://file.ljcdn.com/utopia-file/f1/335bd30182ac7f74ee09a00c407220a7306734b7.pdf"; // 替换为你的 PDF 链接
+        printPdfPageSizes(pdfUrl);
+    }
+
+    public static void printPdfPageSizes(String pdfUrl) {
+        try (InputStream inputStream = new URL(pdfUrl).openStream();
+             PDDocument document = PDDocument.load(inputStream)) {
+
+            int numberOfPages = document.getNumberOfPages();
+            System.out.println("PDF 总页数: " + numberOfPages);
+
+            for (int i = 0; i < numberOfPages; i++) {
+                PDPage page = document.getPage(i);
+                float width = page.getMediaBox().getWidth();
+                float height = page.getMediaBox().getHeight();
+                System.out.println("第 " + (i + 1) + " 页宽度: " + width + " 点, 高度: " + height + " 点");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
+    public  void addFooter(String src, String dest, String footerText,float positionXRatioJ,float positionYRatioJ,
+                           float positionXRatioY,float positionYRatioY) throws IOException {
+        // 加载字体，启用子集嵌入
+        PdfFont font = PdfFontFactory.createFont("/Users/cuiyubao/Desktop/test/ms-song.ttf", PdfEncodings.IDENTITY_H, PdfFontFactory.EmbeddingStrategy.PREFER_NOT_EMBEDDED, true);
+
+        // 设置压缩属性
+        PdfWriter writer = new PdfWriter(dest, new WriterProperties().setCompressionLevel(CompressionConstants.BEST_COMPRESSION));
+        PdfDocument pdfDoc = new PdfDocument(new PdfReader(src), writer);
+
+        int totalPages = pdfDoc.getNumberOfPages();
+
+        // 遍历每页，添加文字
+        for (int i = 1; i <= totalPages; i++) {
+            PdfPage page = pdfDoc.getPage(i);
+            Rectangle pageSize = page.getPageSize();
+            float xJ = pageSize.getWidth() * positionXRatioJ;
+            float yJ = pageSize.getHeight() * positionYRatioJ;
+
+            float xY = pageSize.getWidth() * positionXRatioY;
+            float yY = pageSize.getHeight() * positionYRatioY;
+
+
+            PdfCanvas canvas = new PdfCanvas(page);
+            canvas.beginText()
+                    .setFontAndSize(font, 12)
+                    .moveText(xJ, yJ)
+                    .showText("甲方签名")
+                    .endText();
+
+            canvas.beginText()
+                    .setFontAndSize(font, 12)
+                    .moveText(xY, yY)
+                    .showText("乙方盖章")
+                    .endText();
+
+            // 压缩每页内容流
+            PdfStream stream = page.getContentStream(0);
+            stream.setCompressionLevel(CompressionConstants.BEST_COMPRESSION);
+        }
+
+        pdfDoc.close();
+    }
+
+    public void test(){
+        String src="/Users/cuiyubao/Desktop/品类信息说明.pdf";
+        String dest="/Users/cuiyubao/Desktop/test/品类信息说明.pdf";
+        List<AddFooterTextInfo> list = new ArrayList<>();
+        list.add(new AddFooterTextInfo("甲方签名盖章",0.1f,0.2f));
+        list.add(new AddFooterTextInfo("乙方盖章",0.6f,0.2f));
+        try {
+            addFooterForLastPage(src,dest,list);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void addFooterForLastPage(String src, String dest, List<AddFooterTextInfo> addFooterTextInfoList) throws IOException {
+        // 加载字体，启用子集嵌入
+        PdfFont font = PdfFontFactory.createFont("/Users/cuiyubao/Desktop/test/ms-song.ttf", PdfEncodings.IDENTITY_H, PdfFontFactory.EmbeddingStrategy.PREFER_NOT_EMBEDDED, true);
+        // 设置压缩属性
+        PdfWriter writer = new PdfWriter(dest, new WriterProperties().setCompressionLevel(CompressionConstants.BEST_COMPRESSION));
+        PdfDocument pdfDoc = new PdfDocument(new PdfReader(src), writer);
+        PdfPage lastPage = pdfDoc.getLastPage();
+        Rectangle pageSize = lastPage.getPageSize();
+        PdfCanvas canvas = new PdfCanvas(lastPage);
+        for (AddFooterTextInfo addFooterTextInfo : addFooterTextInfoList) {
+            float x = pageSize.getWidth() * addFooterTextInfo.getPositionXRatio();
+            float y = pageSize.getHeight() * addFooterTextInfo.getPositionYRatio();
+            canvas.beginText()
+                    .setFontAndSize(font, 12)
+                    .moveText(x, y)
+                    .showText(addFooterTextInfo.getText())
+                    .endText();
+        }
+        // 压缩每页内容流
+        PdfStream stream = lastPage.getContentStream(0);
+        stream.setCompressionLevel(CompressionConstants.BEST_COMPRESSION);
+        pdfDoc.close();
+    }
+
+
+
+
+    /**
+     * pdf转图片（多线程并行处理） - 图片url为public bucket
+     * 返回所有的fileObjectKey
+     */
+    public List<String> pdf2ImageParallel(String fileUrl) {
+        PDDocument document = null;
+        List<String> list;
+
+        try {
+            long startTimeMillis = System.currentTimeMillis();
+            log.info("pdf转图片开始 fileUrl:{}", fileUrl);
+            String[] urlString = fileUrl.split("\\?");
+            String[] strings = urlString[0].split("/");
+            byte[] fileContent = read(fileUrl);
+
+            document = PDDocument.load(fileContent);
+            PDFRenderer renderer = new PDFRenderer(document);
+            int numberOfPages = document.getNumberOfPages();
+            AtomicInteger successPage = new AtomicInteger();
+            CompletableFuture<?>[] futures = new CompletableFuture[numberOfPages];
+            String[] s3Urls = new String[numberOfPages];
+            for (int i = 0; i < numberOfPages; i++) {
+                String fileObjectKey = UUID.randomUUID()
+                        + "(" + i + ")." + "png";
+                BufferedImage bufferedImage = renderer.renderImageWithDPI(i, 120);
+
+                // 异步执行任务 RunnableWrapper 传递traceId到异步线程
+                int finalI = i;
+                Runnable task = new Runnable() {
+                    @SneakyThrows
+                    @Override
+                    public void run() {
+                        ByteArrayOutputStream out = new ByteArrayOutputStream();
+                        ImageIO.write(bufferedImage, "png", out);
+                        s3Urls[finalI] = fileObjectKey;
+                        System.out.println("第" + (finalI + 1) + "页图片转图片完成");
+                    }
+                };
+
+                CompletableFuture<Void> future = CompletableFuture.runAsync(task)
+                        .thenRun(successPage::getAndIncrement)
+                        .exceptionally(e -> {
+                            return null;
+                        });
+                futures[i] = future;
+            }
+
+            // 等待所有线程执行完成
+            CompletableFuture<Void> allOf = CompletableFuture.allOf(futures);
+            allOf.join();
+            if (successPage.get() != numberOfPages) {
+                throw new RuntimeException("pdf转图片失败，成功页数：" + successPage.get() + "，总页数：" + numberOfPages);
+            }
+
+            list = new ArrayList<>(Arrays.asList(s3Urls));
+            log.info("pdf转图片结束 fileUrl:{}, cost:{}", fileUrl, System.currentTimeMillis() - startTimeMillis);
+        } catch (Exception e) {
+           throw new RuntimeException(e);
+        } finally {
+            if(Objects.nonNull(document)){
+                try {
+                    document.close();
+                } catch (IOException e) {
+                    log.warn("pdf转图片错误", e);
+                }
+            }
+        }
+
+        return CollectionUtils.isEmpty(list) ? new ArrayList<>() : list;
+    }
+
+    public  byte[] read(String fileUrl) throws IOException {
+        URL url = new URL(fileUrl);
+        byte[] buffer = new byte[1024];
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        con.setRequestMethod("GET");
+        con.setConnectTimeout(4 * 1000);
+        InputStream inputStream = con.getInputStream();    //通过输入流获取图片数据
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            int num = inputStream.read(buffer);
+            while (num != -1) {
+                baos.write(buffer, 0, num);
+                num = inputStream.read(buffer);
+            }
+            baos.flush();
+            return baos.toByteArray();
+        } catch (IOException e) {
+            return null;
+        } finally {
+            if (inputStream != null) {
+                inputStream.close();
+            }
+        }
+    }
+
+
+
+    public List<String> pdf2ImageParallel2(String fileUrl) {
+        PDDocument document = null;
+        List<String> resultList = new ArrayList<>();
+
+        try {
+            long startTimeMillis = System.currentTimeMillis();
+            log.info("pdf转图片开始 fileUrl:{}", fileUrl);
+
+            byte[] fileContent = read(fileUrl);
+            document = PDDocument.load(fileContent);
+            int numberOfPages = document.getNumberOfPages();
+            PDFRenderer renderer = new PDFRenderer(document);
+
+            int batchSize = 5; // ✅ 每批处理页数（可调）
+            ExecutorService executor = Executors.newFixedThreadPool(
+                    Math.min(batchSize, Runtime.getRuntime().availableProcessors())
+            );
+
+            for (int start = 0; start < numberOfPages; start += batchSize) {
+                int end = Math.min(start + batchSize, numberOfPages);
+                List<CompletableFuture<String>> batchFutures = new ArrayList<>();
+
+                for (int i = start; i < end; i++) {
+                    int pageIndex = i;
+                    batchFutures.add(CompletableFuture.supplyAsync(() -> {
+                        try {
+                            // ✅ 每页独立渲染，内存立即释放
+                            BufferedImage image = renderer.renderImageWithDPI(pageIndex, 100);
+
+                            try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                                ImageIO.write(image, "png", out);
+                                String fileObjectKey = UUID.randomUUID() + "(" + pageIndex + ").png";
+
+                                // 这里可替换成真实上传逻辑，例如：uploadToS3(out.toByteArray(), fileObjectKey)
+                                log.info("第{}页转图片完成", pageIndex + 1);
+                                return fileObjectKey;
+                            }
+                        } catch (Exception e) {
+                            log.error("第{}页转换失败", pageIndex + 1, e);
+                            return null;
+                        }
+                    }, executor));
+                }
+
+                // ✅ 等待当前批次执行完再进行下一批，避免堆积
+                List<String> batchResults = batchFutures.stream()
+                        .map(CompletableFuture::join)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+
+                resultList.addAll(batchResults);
+
+                if (batchResults.size() != (end - start)) {
+                    throw new RuntimeException("第" + start + "页到第" + (end - 1) + "页有转换失败");
+                }
+            }
+
+            log.info("pdf转图片结束 fileUrl:{}, cost:{}ms", fileUrl, System.currentTimeMillis() - startTimeMillis);
+        } catch (Exception e) {
+            throw new RuntimeException("pdf转图片异常：" + e.getMessage(), e);
+        } finally {
+            if (document != null) {
+                try {
+                    document.close();
+                } catch (IOException e) {
+                    log.warn("关闭PDF文档失败", e);
+                }
+            }
+        }
+
+        return resultList;
+    }
+
 
 
 }
